@@ -5,20 +5,22 @@ import (
 	"github.com/lysu/slb"
 )
 
-type Executor interface {
+// SQLExecutor is abstract for executable `sql`
+// and try to treat sql.DB and sql.Tx as same way.
+type SQLExecutor interface {
 	Query(query string, args ...interface{}) (*rsql.Rows, error)
 	Exec(query string, args ...interface{}) (rsql.Result, error)
 }
 
-var _ Executor = &resilientMySQLExecutor{}
+var _ SQLExecutor = &resilientMySQLExecutor{}
 
 type resilientMySQLExecutor struct {
-	executor Executor
+	executor SQLExecutor
 	readLb   *slb.LoadBalancer
 	writeLb  *slb.LoadBalancer
 }
 
-func newResilientExecutor(executor Executor, readLb *slb.LoadBalancer, writeLb *slb.LoadBalancer) Executor {
+func newResilientExecutor(executor SQLExecutor, readLb *slb.LoadBalancer, writeLb *slb.LoadBalancer) SQLExecutor {
 	return &resilientMySQLExecutor{executor: executor, readLb: readLb, writeLb: writeLb}
 }
 

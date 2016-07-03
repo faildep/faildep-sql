@@ -1,8 +1,8 @@
 hash: 6d0bc3a48abb3d6d677a39c84c749b6b98c18885759c3f8adc0a47707f53f5ad
-updated: 2016-07-02T22:35:19.546024258+08:00
+updated: 2016-07-04T00:51:53.796562035+08:00
 imports:
 - name: github.com/go-sql-driver/mysql
   version: 3654d25ec346ee8ce71a68431025458d52a38ac0
 - name: github.com/lysu/slb
-  version: 975285d0732a7f6a4686c9174de1f78b71e242fb
+  version: 39431f96a0797d4dc03ce5612e0e210b0da6959d
 devImports: []

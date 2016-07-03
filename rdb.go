@@ -8,8 +8,9 @@ import (
 
 const dummyNode = "dummy"
 
-var _ Executor = &ResilientDB{}
+var _ SQLExecutor = &ResilientDB{}
 
+// ResilientConf tweak Resilient SQL configuration.
 type ResilientConf struct {
 	ReadBulkhead        *BulkheadConf
 	ReadCircuitBreaker  *CircuitBreakerConf
@@ -29,12 +30,18 @@ type BulkheadConf struct {
 	ActiveReqCountWindow time.Duration
 }
 
+// ResilientDB is a database handle representing a pool of zero or more
+// underlying connections. It's safe for concurrent use by multiple
+// goroutines.
 type ResilientDB struct {
 	*rsql.DB
 	readLb  *slb.LoadBalancer
 	writeLb *slb.LoadBalancer
 }
 
+// Open opens a database specified by its database driver name and a
+// driver-specific data source name, usually consisting of at least a
+// database name and connection information.
 func Open(driverName, dataSourceName string, conf ResilientConf) (*ResilientDB, error) {
 	rOpt := []func(lb *slb.LoadBalancer){}
 	if conf.ReadCircuitBreaker != nil {
@@ -75,6 +82,8 @@ func Open(driverName, dataSourceName string, conf ResilientConf) (*ResilientDB, 
 	return &ResilientDB{DB: db, readLb: rlb, writeLb: wlb}, nil
 }
 
+// Begin starts a transaction. The isolation level is dependent on
+// the driver.
 func (d ResilientDB) Begin() (rtx *ResilientTx, err error) {
 	err = d.writeLb.Submit(func(_ *slb.Node) error {
 		tx, err := d.DB.Begin()
@@ -87,10 +96,18 @@ func (d ResilientDB) Begin() (rtx *ResilientTx, err error) {
 	return
 }
 
+// Exec executes a query without returning any rows.
+// The args are for any placeholder parameters in the query.
 func (d *ResilientDB) Exec(query string, args ...interface{}) (rsql.Result, error) {
-	return newResilientExecutor(d.DB, d.readLb, d.writeLb).Exec(query, args...)
+	rawResult, err := newResilientExecutor(d.DB, d.readLb, d.writeLb).Exec(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	return newResilientResult(rawResult, d.writeLb), nil
 }
 
+// Query executes a query that returns rows, typically a SELECT.
+// The args are for any placeholder parameters in the query.
 func (d *ResilientDB) Query(query string, args ...interface{}) (*rsql.Rows, error) {
 	return newResilientExecutor(d.DB, d.readLb, d.writeLb).Query(query, args...)
 }
