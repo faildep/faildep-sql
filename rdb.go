@@ -2,8 +2,8 @@ package sql
 
 import (
 	rsql "database/sql"
-	"github.com/lysu/slb"
 	"time"
+	"github.com/faildep/faildep"
 )
 
 const dummyNode = "dummy"
@@ -22,7 +22,7 @@ type CircuitBreakerConf struct {
 	SuccessiveFailThreshold uint
 	TrippedBaseTime         time.Duration
 	TrippedTimeoutMax       time.Duration
-	TrippedBackOff          slb.BackOff
+	TrippedBackOff          faildep.BackOff
 }
 
 type BulkheadConf struct {
@@ -35,17 +35,17 @@ type BulkheadConf struct {
 // goroutines.
 type ResilientDB struct {
 	*rsql.DB
-	readLb  *slb.LoadBalancer
-	writeLb *slb.LoadBalancer
+	readFd  *faildep.FailDep
+	writeFd *faildep.FailDep
 }
 
 // Open opens a database specified by its database driver name and a
 // driver-specific data source name, usually consisting of at least a
 // database name and connection information.
 func Open(driverName, dataSourceName string, conf ResilientConf) (*ResilientDB, error) {
-	rOpt := []func(lb *slb.LoadBalancer){}
+	rOpt := []func(f *faildep.FailDep){}
 	if conf.ReadCircuitBreaker != nil {
-		rOpt = append(rOpt, slb.WithCircuitBreaker(
+		rOpt = append(rOpt, faildep.WithCircuitBreaker(
 			conf.ReadCircuitBreaker.SuccessiveFailThreshold,
 			conf.ReadCircuitBreaker.TrippedBaseTime,
 			conf.ReadCircuitBreaker.TrippedTimeoutMax,
@@ -53,14 +53,14 @@ func Open(driverName, dataSourceName string, conf ResilientConf) (*ResilientDB, 
 		))
 	}
 	if conf.ReadBulkhead != nil {
-		rOpt = append(rOpt, slb.WithBulkhead(
+		rOpt = append(rOpt, faildep.WithBulkhead(
 			conf.ReadBulkhead.ActiveReqThreshold,
 			conf.ReadBulkhead.ActiveReqCountWindow,
 		))
 	}
-	wOpt := []func(lb *slb.LoadBalancer){}
+	wOpt := []func(f *faildep.FailDep){}
 	if conf.WriteCircuitBreaker != nil {
-		wOpt = append(wOpt, slb.WithCircuitBreaker(
+		wOpt = append(wOpt, faildep.WithCircuitBreaker(
 			conf.WriteCircuitBreaker.SuccessiveFailThreshold,
 			conf.WriteCircuitBreaker.TrippedBaseTime,
 			conf.WriteCircuitBreaker.TrippedTimeoutMax,
@@ -68,29 +68,29 @@ func Open(driverName, dataSourceName string, conf ResilientConf) (*ResilientDB, 
 		))
 	}
 	if conf.WriteBulkhead != nil {
-		wOpt = append(wOpt, slb.WithBulkhead(
+		wOpt = append(wOpt, faildep.WithBulkhead(
 			conf.WriteBulkhead.ActiveReqThreshold,
 			conf.WriteBulkhead.ActiveReqCountWindow,
 		))
 	}
-	rlb := slb.NewLoadBalancer([]string{dummyNode}, wOpt...)
-	wlb := slb.NewLoadBalancer([]string{dummyNode}, wOpt...)
+	rf := faildep.NewFailDep([]string{dummyNode}, wOpt...)
+	wf := faildep.NewFailDep([]string{dummyNode}, wOpt...)
 	db, err := rsql.Open(driverName, dataSourceName)
 	if err != nil {
 		return nil, err
 	}
-	return &ResilientDB{DB: db, readLb: rlb, writeLb: wlb}, nil
+	return &ResilientDB{DB: db, readFd: rf, writeFd: wf}, nil
 }
 
 // Begin starts a transaction. The isolation level is dependent on
 // the driver.
 func (d ResilientDB) Begin() (rtx *ResilientTx, err error) {
-	err = d.writeLb.Submit(func(_ *slb.Node) error {
+	err = d.writeFd.Do(func(_ *faildep.Resource) error {
 		tx, err := d.DB.Begin()
 		if err != nil {
 			return err
 		}
-		rtx = newResilientTx(tx, d.writeLb)
+		rtx = newResilientTx(tx, d.writeFd)
 		return nil
 	})
 	return
@@ -99,15 +99,15 @@ func (d ResilientDB) Begin() (rtx *ResilientTx, err error) {
 // Exec executes a query without returning any rows.
 // The args are for any placeholder parameters in the query.
 func (d *ResilientDB) Exec(query string, args ...interface{}) (rsql.Result, error) {
-	rawResult, err := newResilientExecutor(d.DB, d.readLb, d.writeLb).Exec(query, args...)
+	rawResult, err := newResilientExecutor(d.DB, d.readFd, d.writeFd).Exec(query, args...)
 	if err != nil {
 		return nil, err
 	}
-	return newResilientResult(rawResult, d.writeLb), nil
+	return newResilientResult(rawResult, d.writeFd), nil
 }
 
 // Query executes a query that returns rows, typically a SELECT.
 // The args are for any placeholder parameters in the query.
 func (d *ResilientDB) Query(query string, args ...interface{}) (*rsql.Rows, error) {
-	return newResilientExecutor(d.DB, d.readLb, d.writeLb).Query(query, args...)
+	return newResilientExecutor(d.DB, d.readFd, d.writeFd).Query(query, args...)
 }

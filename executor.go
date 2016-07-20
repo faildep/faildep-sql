@@ -2,7 +2,7 @@ package sql
 
 import (
 	rsql "database/sql"
-	"github.com/lysu/slb"
+	"github.com/faildep/faildep"
 )
 
 // SQLExecutor is abstract for executable `sql`
@@ -16,16 +16,16 @@ var _ SQLExecutor = &resilientMySQLExecutor{}
 
 type resilientMySQLExecutor struct {
 	executor SQLExecutor
-	readLb   *slb.LoadBalancer
-	writeLb  *slb.LoadBalancer
+	readFd   *faildep.FailDep
+	writeFd  *faildep.FailDep
 }
 
-func newResilientExecutor(executor SQLExecutor, readLb *slb.LoadBalancer, writeLb *slb.LoadBalancer) SQLExecutor {
-	return &resilientMySQLExecutor{executor: executor, readLb: readLb, writeLb: writeLb}
+func newResilientExecutor(executor SQLExecutor, readFd *faildep.FailDep, writeFd *faildep.FailDep) SQLExecutor {
+	return &resilientMySQLExecutor{executor: executor, readFd: readFd, writeFd: writeFd}
 }
 
 func (e *resilientMySQLExecutor) Exec(query string, args ...interface{}) (result rsql.Result, err error) {
-	err = e.writeLb.Submit(func(_ *slb.Node) error {
+	err = e.writeFd.Do(func(_ *faildep.Resource) error {
 		result, err = e.executor.Exec(query, args...)
 		if err != nil {
 			return err
@@ -36,7 +36,7 @@ func (e *resilientMySQLExecutor) Exec(query string, args ...interface{}) (result
 }
 
 func (e *resilientMySQLExecutor) Query(query string, args ...interface{}) (rows *rsql.Rows, err error) {
-	err = e.readLb.Submit(func(_ *slb.Node) error {
+	err = e.readFd.Do(func(_ *faildep.Resource) error {
 		rows, err = e.executor.Query(query, args...)
 		if err != nil {
 			return err

@@ -2,7 +2,7 @@ package sql
 
 import (
 	rsql "database/sql"
-	"github.com/lysu/slb"
+	"github.com/faildep/faildep"
 )
 
 var _ SQLExecutor = &ResilientTx{}
@@ -19,41 +19,41 @@ var _ SQLExecutor = &ResilientTx{}
 // by the call to Commit or Rollback.
 type ResilientTx struct {
 	*rsql.Tx
-	writeLb *slb.LoadBalancer
+	writeFd *faildep.FailDep
 }
 
-func newResilientTx(tx *rsql.Tx, writeLb *slb.LoadBalancer) *ResilientTx {
+func newResilientTx(tx *rsql.Tx, writeFd *faildep.FailDep) *ResilientTx {
 	return &ResilientTx{
 		Tx:      tx,
-		writeLb: writeLb,
+		writeFd: writeFd,
 	}
 }
 
 // Exec executes a query that doesn't return rows.
 // For example: an INSERT and UPDATE.
 func (t *ResilientTx) Exec(query string, args ...interface{}) (rsql.Result, error) {
-	rawResult, err := newResilientExecutor(t.Tx, t.writeLb, t.writeLb).Exec(query, args...)
+	rawResult, err := newResilientExecutor(t.Tx, t.writeFd, t.writeFd).Exec(query, args...)
 	if err != nil {
 		return nil, err
 	}
-	return newResilientResult(rawResult, t.writeLb), nil
+	return newResilientResult(rawResult, t.writeFd), nil
 }
 
 // Query executes a query that returns rows, typically a SELECT.
 func (t *ResilientTx) Query(query string, args ...interface{}) (*rsql.Rows, error) {
-	return newResilientExecutor(t.Tx, t.writeLb, t.writeLb).Query(query, args...)
+	return newResilientExecutor(t.Tx, t.writeFd, t.writeFd).Query(query, args...)
 }
 
 // Commit commits the transaction.
 func (t *ResilientTx) Commit() error {
-	return t.writeLb.Submit(func(_ *slb.Node) error {
+	return t.writeFd.Do(func(_ *faildep.Resource) error {
 		return t.Tx.Commit()
 	})
 }
 
 // Rollback aborts the transaction.
 func (t *ResilientTx) Rollback() error {
-	return t.writeLb.Submit(func(_ *slb.Node) error {
+	return t.writeFd.Do(func(_ *faildep.Resource) error {
 		return t.Tx.Rollback()
 	})
 }

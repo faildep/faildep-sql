@@ -2,20 +2,20 @@ package sql
 
 import (
 	rsql "database/sql"
-	"github.com/lysu/slb"
+	"github.com/faildep/faildep"
 )
 
 type resilientResult struct {
 	rsql.Result
-	writeLb *slb.LoadBalancer
+	writeFd *faildep.FailDep
 }
 
-func newResilientResult(result rsql.Result, writeLb *slb.LoadBalancer) *resilientResult {
-	return &resilientResult{Result: result, writeLb: writeLb}
+func newResilientResult(result rsql.Result, writeFd *faildep.FailDep) *resilientResult {
+	return &resilientResult{Result: result, writeFd: writeFd}
 }
 
 func (r *resilientResult) LastInsertId() (lastID int64, err error) {
-	err = r.writeLb.Submit(func(_ *slb.Node) error {
+	err = r.writeFd.Do(func(_ *faildep.Resource) error {
 		id, err := r.Result.LastInsertId()
 		if err != nil {
 			return err
@@ -27,7 +27,7 @@ func (r *resilientResult) LastInsertId() (lastID int64, err error) {
 }
 
 func (r *resilientResult) RowsAffected() (affectedRows int64, err error) {
-	err = r.writeLb.Submit(func(_ *slb.Node) error {
+	err = r.writeFd.Do(func(_ *faildep.Resource) error {
 		r2, err := r.Result.RowsAffected()
 		if err != nil {
 			return err

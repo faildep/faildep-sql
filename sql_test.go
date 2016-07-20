@@ -6,7 +6,7 @@ import (
 	"log"
 )
 
-func Example_goResilientSql() {
+func Example_faildepSql() {
 	// Create a Resilient configuration
 	config := sql.ResilientConf{}
 

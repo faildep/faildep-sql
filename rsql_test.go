@@ -1,9 +1,9 @@
 package sql_test
 
 import (
-	"github.com/lysu/go-resilient-mysql"
 	"testing"
 	"time"
+	"github.com/faildep/faildep-sql"
 )
 
 func TestInit(t *testing.T) {

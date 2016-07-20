@@ -1,4 +1,0 @@
-package: github.com/lysu/go-resilient-mysql
-import:
-- package: github.com/go-sql-driver/mysql
-- package: github.com/lysu/slb
